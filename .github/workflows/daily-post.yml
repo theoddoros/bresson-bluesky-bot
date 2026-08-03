@@ -1,81 +1,40 @@
-"""
-Poste un aphorisme aléatoire de Robert Bresson sur Bluesky.
+name: Post daily Bresson aphorism to Bluesky
 
-Gère un état (state.json) pour ne jamais reposter deux fois le même
-aphorisme avant d'avoir épuisé toute la liste. Une fois la liste
-épuisée, elle est automatiquement remélangée.
-"""
+on:
+  schedule:
+    # Tous les jours à 9h00 heure de Paris (7h00 UTC en été, 8h00 UTC en hiver)
+    # GitHub Actions ne gère que l'UTC : ajuster ici si besoin.
+    - cron: "0 8 * * *"
+  workflow_dispatch: {} # permet de lancer le workflow manuellement depuis GitHub
 
-import json
-import os
-import random
-import sys
+permissions:
+  contents: write
 
-from atproto import Client
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-APHORISMS_FILE = "bresson_aphorismes.json"
-STATE_FILE = "state.json"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-def load_aphorisms():
-    with open(APHORISMS_FILE, encoding="utf-8") as f:
-        data = json.load(f)
-    return data["aphorisms"]
+      - name: Post to Bluesky
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: python post_bluesky.py
 
-
-def load_state(total):
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, encoding="utf-8") as f:
-            state = json.load(f)
-        # Sécurité : si la liste source a changé de taille, on repart à zéro
-        if state.get("total") == total and state.get("remaining"):
-            return state
-    # Première exécution ou état invalide : on initialise et mélange
-    remaining = list(range(total))
-    random.shuffle(remaining)
-    return {"total": total, "remaining": remaining}
-
-
-def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
-
-def main():
-    handle = os.environ["BLUESKY_HANDLE"]
-    app_password = os.environ["BLUESKY_APP_PASSWORD"]
-
-    aphorisms = load_aphorisms()
-    state = load_state(len(aphorisms))
-
-    index = state["remaining"].pop()
-    text = aphorisms[index]
-
-    if len(text) > 300:
-        print(f"Aphorisme trop long ignoré ({len(text)} caractères), tentative suivante.")
-        if not state["remaining"]:
-            state["remaining"] = list(range(len(aphorisms)))
-            random.shuffle(state["remaining"])
-        index = state["remaining"].pop()
-        text = aphorisms[index]
-
-    # Si la liste est épuisée après ce tirage, on la remélange pour la
-    # prochaine exécution (mais on poste bien celui tiré aujourd'hui).
-    if not state["remaining"]:
-        state["remaining"] = list(range(len(aphorisms)))
-        random.shuffle(state["remaining"])
-
-    client = Client()
-    client.login(handle, app_password)
-    client.send_post(text=text)
-
-    save_state(state)
-    print(f"Posté (index {index}, {len(text)} caractères) :\n{text}")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"Erreur lors de la publication : {e}", file=sys.stderr)
-        sys.exit(1)
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --quiet --cached || git commit -m "Update posting state [skip ci]"
+          git push

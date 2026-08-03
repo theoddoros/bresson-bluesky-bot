@@ -1,0 +1,40 @@
+name: Post daily Bresson aphorism to Bluesky
+
+on:
+  schedule:
+    # Tous les jours à 9h00 heure de Paris (7h00 UTC en été, 8h00 UTC en hiver)
+    # GitHub Actions ne gère que l'UTC : ajuster ici si besoin.
+    - cron: "0 8 * * *"
+  workflow_dispatch: {} # permet de lancer le workflow manuellement depuis GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post to Bluesky
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: python post_bluesky.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --quiet --cached || git commit -m "Update posting state [skip ci]"
+          git push

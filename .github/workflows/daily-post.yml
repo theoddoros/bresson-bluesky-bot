@@ -4,7 +4,7 @@ on:
   schedule:
     # Tous les jours à 9h00 heure de Paris (7h00 UTC en été, 8h00 UTC en hiver)
     # GitHub Actions ne gère que l'UTC : ajuster ici si besoin.
-    - cron: "39 8 * * *"
+    - cron: "01 12 * * *"
   workflow_dispatch: {} # permet de lancer le workflow manuellement depuis GitHub
 
 permissions:
